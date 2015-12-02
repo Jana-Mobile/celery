@@ -286,11 +286,8 @@ def _shutdown_handler(worker, sig='TERM', how='Warm',
                 if callback:
                     callback(worker)
                 safe_say('worker: {0} shutdown (MainProcess)'.format(how))
-            if active_thread_count() > 1:
-                setattr(state, {'Warm': 'should_stop',
-                                'Cold': 'should_terminate'}[how], True)
-            else:
-                raise exc()
+            setattr(state, {'Warm': 'should_stop',
+                            'Cold': 'should_terminate'}[how], True)
     _handle_request.__name__ = str('worker_{0}'.format(how))
     platforms.signals[sig] = _handle_request
 install_worker_term_handler = partial(
