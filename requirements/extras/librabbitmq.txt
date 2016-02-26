@@ -1,1 +1,1 @@
-librabbitmq>=1.0.2
+librabbitmq>=1.6.1

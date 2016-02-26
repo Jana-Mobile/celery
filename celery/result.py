@@ -96,6 +96,7 @@ class AsyncResult(ResultBase):
 
     def forget(self):
         """Forget about (and possibly remove the result of) this task."""
+        self._cache = None
         self.backend.forget(self.id)
 
     def revoke(self, connection=None, terminate=False, signal=None,
@@ -119,8 +120,10 @@ class AsyncResult(ResultBase):
                                 terminate=terminate, signal=signal,
                                 reply=wait, timeout=timeout)
 
-    def get(self, timeout=None, propagate=True, interval=0.5, no_ack=True,
-            follow_parents=True):
+    def get(self, timeout=None, propagate=True, interval=0.5,
+            no_ack=True, follow_parents=True,
+            EXCEPTION_STATES=states.EXCEPTION_STATES,
+            PROPAGATE_STATES=states.PROPAGATE_STATES):
         """Wait until task is ready, and return its result.
 
         .. warning::
@@ -159,16 +162,18 @@ class AsyncResult(ResultBase):
                 self.maybe_reraise()
             return self.result
 
-        try:
-            return self.backend.wait_for(
-                self.id, timeout=timeout,
-                propagate=propagate,
-                interval=interval,
-                on_interval=on_interval,
-                no_ack=no_ack,
-            )
-        finally:
-            self._get_task_meta()  # update self._cache
+        meta = self.backend.wait_for(
+            self.id, timeout=timeout,
+            interval=interval,
+            on_interval=on_interval,
+            no_ack=no_ack,
+        )
+        if meta:
+            self._maybe_set_cache(meta)
+            status = meta['status']
+            if status in PROPAGATE_STATES and propagate:
+                raise meta['result']
+            return meta['result']
     wait = get  # deprecated alias to :meth:`get`.
 
     def _maybe_reraise_parent_error(self):
@@ -322,21 +327,20 @@ class AsyncResult(ResultBase):
     def children(self):
         return self._get_task_meta().get('children')
 
+    def _maybe_set_cache(self, meta):
+        if meta:
+            state = meta['status']
+            if state == states.SUCCESS or state in states.PROPAGATE_STATES:
+                return self._set_cache(meta)
+        return meta
+
     def _get_task_meta(self):
         if self._cache is None:
-            meta = self.backend.get_task_meta(self.id)
-            if meta:
-                state = meta['status']
-                if state == states.SUCCESS or state in states.PROPAGATE_STATES:
-                    self._set_cache(meta)
-                    return self._set_cache(meta)
-            return meta
+            return self._maybe_set_cache(self.backend.get_task_meta(self.id))
         return self._cache
 
     def _set_cache(self, d):
-        state, children = d['status'], d.get('children')
-        if state in states.EXCEPTION_STATES:
-            d['result'] = self.backend.exception_to_python(d['result'])
+        children = d.get('children')
         if children:
             d['children'] = [
                 result_from_tuple(child, self.app) for child in children
@@ -658,7 +662,7 @@ class ResultSet(ResultBase):
         results = self.results
         if not results:
             return iter([])
-        return results[0].backend.get_many(
+        return self.backend.get_many(
             set(r.id for r in results),
             timeout=timeout, interval=interval, no_ack=no_ack,
         )
@@ -718,7 +722,14 @@ class ResultSet(ResultBase):
 
     @property
     def supports_native_join(self):
-        return self.results[0].supports_native_join
+        try:
+            return self.results[0].supports_native_join
+        except IndexError:
+            pass
+
+    @property
+    def backend(self):
+        return self.app.backend if self.app else self.results[0].backend
 
 
 class GroupResult(ResultSet):

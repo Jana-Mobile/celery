@@ -15,26 +15,27 @@ from kombu.pidbox import Mailbox
 from kombu.utils import cached_property
 
 from celery.exceptions import DuplicateNodenameWarning
+from celery.utils.text import pluralize
 
 __all__ = ['Inspect', 'Control', 'flatten_reply']
 
 W_DUPNODE = """\
-Received multiple replies from node name {0!r}.
+Received multiple replies from node name: {0!r}.
 Please make sure you give each node a unique nodename using the `-n` option.\
 """
 
 
 def flatten_reply(reply):
-    nodes = {}
-    seen = set()
+    nodes, dupes = {}, set()
     for item in reply:
-        dup = next((nodename in seen for nodename in item), None)
-        if dup:
-            warnings.warn(DuplicateNodenameWarning(
-                W_DUPNODE.format(dup),
-            ))
-        seen.update(item)
+        [dupes.add(name) for name in item if name in nodes]
         nodes.update(item)
+    if dupes:
+        warnings.warn(DuplicateNodenameWarning(
+            W_DUPNODE.format(
+                pluralize(len(dupes), 'name'), ', '.join(sorted(dupes)),
+            ),
+        ))
     return nodes
 
 
@@ -262,7 +263,7 @@ class Control(object):
         return self.broadcast('enable_events', {}, destination, **kwargs)
 
     def disable_events(self, destination=None, **kwargs):
-        """Tell all (or specific) workers to enable events."""
+        """Tell all (or specific) workers to disable events."""
         return self.broadcast('disable_events', {}, destination, **kwargs)
 
     def pool_grow(self, n=1, destination=None, **kwargs):
@@ -280,6 +281,15 @@ class Control(object):
 
         """
         return self.broadcast('pool_shrink', {'n': n}, destination, **kwargs)
+
+    def autoscale(self, max, min, destination=None, **kwargs):
+        """Change worker(s) autoscale setting.
+
+        Supports the same arguments as :meth:`broadcast`.
+
+        """
+        return self.broadcast(
+            'autoscale', {'max': max, 'min': min}, destination, **kwargs)
 
     def broadcast(self, command, arguments=None, destination=None,
                   connection=None, reply=False, timeout=1, limit=None,

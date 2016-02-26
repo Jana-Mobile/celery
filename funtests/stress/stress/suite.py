@@ -101,6 +101,7 @@ class Suite(object):
                 self.bigtasksbigvalue,
                 self.smalltasks,
                 self.timelimits,
+                self.always_timeout,
                 self.timelimits_soft,
                 self.revoketermfast,
                 self.revoketermslow,
@@ -168,7 +169,7 @@ class Suite(object):
         )
 
     def manyshort(self):
-        self.join(group(add.s(i, i) for i in range(1000))(),
+        self.join(group(add.si(i, i) for i in range(1000))(),
                   timeout=10, propagate=True)
 
     def runtest(self, fun, n=50, index=0, repeats=1):
@@ -211,6 +212,13 @@ class Suite(object):
                             fun, i + 1, n, index, repeats, runtime, elapsed, 1,
                         )
 
+    def always_timeout(self):
+        self.join(
+            group(sleeping.s(1).set(time_limit=0.001)
+                  for _ in range(100))(),
+            timeout=10, propagate=True,
+        )
+
     def termbysig(self):
         self._evil_groupmember(kill)
 
@@ -246,7 +254,14 @@ class Suite(object):
     def bigtasksbigvalue(self):
         g = group(any_returning.s(BIG, sleep=0.3) for i in range(8))
         r = g()
-        self.join(r, timeout=10)
+        try:
+            self.join(r, timeout=10)
+        finally:
+            # very big values so remove results from backend
+            try:
+                r.forget()
+            except NotImplementedError:
+                pass
 
     def bigtasks(self, wait=None):
         self._revoketerm(wait, False, False, BIG)

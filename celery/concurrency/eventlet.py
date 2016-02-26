@@ -29,10 +29,10 @@ for mod in (mod for mod in sys.modules if mod.startswith(RACE_MODS)):
             warnings.warn(RuntimeWarning(W_RACE % side))
 
 
-from celery import signals
-from celery.utils import timer2
+from celery import signals  # noqa
+from celery.utils import timer2  # noqa
 
-from . import base
+from . import base  # noqa
 
 
 def apply_target(target, args=(), kwargs={}, callback=None,
@@ -142,3 +142,20 @@ class TaskPool(base.BasePool):
         self._quick_put(apply_target, target, args, kwargs,
                         callback, accept_callback,
                         self.getpid)
+
+    def grow(self, n=1):
+        limit = self.limit + n
+        self._pool.resize(limit)
+        self.limit = limit
+
+    def shrink(self, n=1):
+        limit = self.limit - n
+        self._pool.resize(limit)
+        self.limit = limit
+
+    def _get_info(self):
+        return {
+            'max-concurrency': self.limit,
+            'free-threads': self._pool.free(),
+            'running-threads': self._pool.running(),
+        }

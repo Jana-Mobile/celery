@@ -45,14 +45,14 @@ Now you can start server `z` to only process the feeds queue like this:
 
 .. code-block:: bash
 
-    user@z:/$ celery worker -Q feeds
+    user@z:/$ celery -A proj worker -Q feeds
 
 You can specify as many queues as you want, so you can make this server
 process the default queue as well:
 
 .. code-block:: bash
 
-    user@z:/$ celery worker -Q feeds,celery
+    user@z:/$ celery -A proj worker -Q feeds,celery
 
 .. _routing-changing-default-queue:
 
@@ -147,21 +147,21 @@ start it with the ``-Q`` option:
 
 .. code-block:: bash
 
-    user@z:/$ celery worker -Q feed_tasks --hostname=z@%h
+    user@z:/$ celery -A proj worker -Q feed_tasks --hostname=z@%h
 
 Servers `x` and `y` must be configured to consume from the default queue:
 
 .. code-block:: bash
 
-    user@x:/$ celery worker -Q default --hostname=x@%h
-    user@y:/$ celery worker -Q default --hostname=y@%h
+    user@x:/$ celery -A proj worker -Q default --hostname=x@%h
+    user@y:/$ celery -A proj worker -Q default --hostname=y@%h
 
 If you want, you can even have your feed processing worker handle regular
 tasks as well, maybe in times when there's a lot of work to do:
 
 .. code-block:: python
 
-    user@z:/$ celery worker -Q feed_tasks,default --hostname=z@%h
+    user@z:/$ celery -A proj worker -Q feed_tasks,default --hostname=z@%h
 
 If you have another queue but on another exchange you want to add,
 just specify a custom exchange and exchange type:
@@ -313,6 +313,8 @@ Related API commands
 
     Declares an exchange by name.
 
+    See :meth:`amqp:Channel.exchange_declare <amqp.channel.Channel.exchange_declare>`.
+
     :keyword passive: Passive means the exchange won't be created, but you
         can use this to check if the exchange already exists.
 
@@ -327,21 +329,30 @@ Related API commands
 
     Declares a queue by name.
 
+    See :meth:`amqp:Channel.queue_declare <amqp.channel.Channel.queue_declare>`
+
     Exclusive queues can only be consumed from by the current connection.
     Exclusive also implies `auto_delete`.
 
 .. method:: queue.bind(queue_name, exchange_name, routing_key)
 
     Binds a queue to an exchange with a routing key.
+
     Unbound queues will not receive messages, so this is necessary.
+
+    See :meth:`amqp:Channel.queue_bind <amqp.channel.Channel.queue_bind>`
 
 .. method:: queue.delete(name, if_unused=False, if_empty=False)
 
     Deletes a queue and its binding.
 
+    See :meth:`amqp:Channel.queue_delete <amqp.channel.Channel.queue_delete>`
+
 .. method:: exchange.delete(name, if_unused=False)
 
     Deletes an exchange.
+
+    See :meth:`amqp:Channel.exchange_delete <amqp.channel.Channel.exchange_delete>`
 
 .. note::
 
@@ -367,7 +378,7 @@ or just start with no arguments to start it in shell-mode:
 
 .. code-block:: bash
 
-    $ celery amqp
+    $ celery -A proj amqp
     -> connecting to amqp://guest@localhost:5672/.
     -> connected.
     1>
@@ -381,7 +392,7 @@ Let's create a queue you can send messages to:
 
 .. code-block:: bash
 
-    $ celery amqp
+    $ celery -A proj amqp
     1> exchange.declare testexchange direct
     ok.
     2> queue.declare testqueue
@@ -571,7 +582,7 @@ copies of tasks to all workers connected to it:
 
     CELERY_ROUTES = {'tasks.reload_cache': {'queue': 'broadcast_tasks'}}
 
-Now the ``tasks.reload_tasks`` task will be sent to every
+Now the ``tasks.reload_cache`` task will be sent to every
 worker consuming from this queue.
 
 .. admonition:: Broadcast & Results

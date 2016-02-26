@@ -102,8 +102,8 @@ CELERY_TEST_CONFIG = {
         'host': os.environ.get('MONGO_HOST') or 'localhost',
         'port': os.environ.get('MONGO_PORT') or 27017,
         'database': os.environ.get('MONGO_DB') or 'celery_unittests',
-        'taskmeta_collection': (os.environ.get('MONGO_TASKMETA_COLLECTION')
-                                or 'taskmeta_collection'),
+        'taskmeta_collection': (os.environ.get('MONGO_TASKMETA_COLLECTION') or
+                                'taskmeta_collection'),
         'user': os.environ.get('MONGO_USER'),
         'password': os.environ.get('MONGO_PASSWORD'),
     }
@@ -234,10 +234,15 @@ def _is_magic_module(m):
     # will load _tkinter and other shit when touched.
 
     # pyflakes refuses to accept 'noqa' for this isinstance.
-    cls, modtype = m.__class__, types.ModuleType
-    return (not cls is modtype and (
-        '__getattr__' in vars(m.__class__) or
-        '__getattribute__' in vars(m.__class__)))
+    cls, modtype = type(m), types.ModuleType
+    try:
+        variables = vars(cls)
+    except TypeError:
+        return True
+    else:
+        return (cls is not modtype and (
+            '__getattr__' in variables or
+            '__getattribute__' in variables))
 
 
 class _AssertWarnsContext(_AssertRaisesBaseContext):
@@ -412,8 +417,12 @@ class AppCase(Case):
         self._current_app = current_app()
         self._default_app = _state.default_app
         trap = Trap()
+        self._prev_tls = _state._tls
         _state.set_default_app(trap)
-        _state._tls.current_app = trap
+
+        class NonTLS(object):
+            current_app = trap
+        _state._tls = NonTLS()
 
         self.app = self.Celery(set_as_current=False)
         if not self.contained:
@@ -435,11 +444,11 @@ class AppCase(Case):
         assert sys.__stdout__
         assert sys.__stderr__
         this = self._get_test_name()
-        if isinstance(sys.stdout, LoggingProxy) or \
-                isinstance(sys.__stdout__, LoggingProxy):
+        if isinstance(sys.stdout, (LoggingProxy, Mock)) or \
+                isinstance(sys.__stdout__, (LoggingProxy, Mock)):
             raise RuntimeError(CASE_LOG_REDIRECT_EFFECT.format(this, 'stdout'))
-        if isinstance(sys.stderr, LoggingProxy) or \
-                isinstance(sys.__stderr__, LoggingProxy):
+        if isinstance(sys.stderr, (LoggingProxy, Mock)) or \
+                isinstance(sys.__stderr__, (LoggingProxy, Mock)):
             raise RuntimeError(CASE_LOG_REDIRECT_EFFECT.format(this, 'stderr'))
         backend = self.app.__dict__.get('backend')
         if backend is not None:
@@ -447,13 +456,12 @@ class AppCase(Case):
                 if isinstance(backend.client, DummyClient):
                     backend.client.cache.clear()
                 backend._cache.clear()
-        from celery._state import (
-            _tls, set_default_app, _set_task_join_will_block,
-        )
-        _set_task_join_will_block(False)
+        from celery import _state
+        _state._set_task_join_will_block(False)
 
-        set_default_app(self._default_app)
-        _tls.current_app = self._current_app
+        _state.set_default_app(self._default_app)
+        _state._tls = self._prev_tls
+        _state._tls.current_app = self._current_app
         if self.app is not self._current_app:
             self.app.close()
         self.app = None
@@ -673,7 +681,7 @@ def replace_module_value(module, name, value=None):
         yield
     finally:
         if prev is not None:
-            setattr(sys, name, prev)
+            setattr(module, name, prev)
         if not has_prev:
             try:
                 delattr(module, name)

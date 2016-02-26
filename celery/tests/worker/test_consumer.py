@@ -164,11 +164,30 @@ class test_Heart(AppCase):
         with patch('celery.worker.heartbeat.Heart') as hcls:
             h = Heart(c)
             self.assertTrue(h.enabled)
+            self.assertEqual(h.heartbeat_interval, None)
             self.assertIsNone(c.heart)
 
             h.start(c)
             self.assertTrue(c.heart)
-            hcls.assert_called_with(c.timer, c.event_dispatcher)
+            hcls.assert_called_with(c.timer, c.event_dispatcher,
+                                    h.heartbeat_interval)
+            c.heart.start.assert_called_with()
+
+    def test_start_heartbeat_interval(self):
+        c = Mock()
+        c.timer = Mock()
+        c.event_dispatcher = Mock()
+
+        with patch('celery.worker.heartbeat.Heart') as hcls:
+            h = Heart(c, False, 20)
+            self.assertTrue(h.enabled)
+            self.assertEqual(h.heartbeat_interval, 20)
+            self.assertIsNone(c.heart)
+
+            h.start(c)
+            self.assertTrue(c.heart)
+            hcls.assert_called_with(c.timer, c.event_dispatcher,
+                                    h.heartbeat_interval)
             c.heart.start.assert_called_with()
 
 
@@ -265,6 +284,28 @@ class test_Gossip(AppCase):
         g = Gossip(c)
         self.assertTrue(g.enabled)
         self.assertIs(c.gossip, g)
+
+    def test_callbacks(self):
+        c = self.Consumer()
+        c.app.connection = _amqp_connection()
+        g = Gossip(c)
+        on_node_join = Mock(name='on_node_join')
+        on_node_join2 = Mock(name='on_node_join2')
+        on_node_leave = Mock(name='on_node_leave')
+        on_node_lost = Mock(name='on.node_lost')
+        g.on.node_join.add(on_node_join)
+        g.on.node_join.add(on_node_join2)
+        g.on.node_leave.add(on_node_leave)
+        g.on.node_lost.add(on_node_lost)
+
+        worker = Mock(name='worker')
+        g.on_node_join(worker)
+        on_node_join.assert_called_with(worker)
+        on_node_join2.assert_called_with(worker)
+        g.on_node_leave(worker)
+        on_node_leave.assert_called_with(worker)
+        g.on_node_lost(worker)
+        on_node_lost.assert_called_with(worker)
 
     def test_election(self):
         c = self.Consumer()
