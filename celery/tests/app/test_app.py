@@ -144,7 +144,10 @@ class test_App(AppCase):
     def test_add_defaults(self):
         self.assertFalse(self.app.configured)
         _conf = {'FOO': 300}
-        conf = lambda: _conf
+
+        def conf():
+            return _conf
+
         self.app.add_defaults(conf)
         self.assertIn(conf, self.app._pending_defaults)
         self.assertFalse(self.app.configured)
@@ -208,7 +211,10 @@ class test_App(AppCase):
 
     def test_autodiscover_tasks_lazy(self):
         with patch('celery.signals.import_modules') as import_modules:
-            packages = lambda: [1, 2, 3]
+
+            def packages():
+                return [1, 2, 3]
+
             self.app.autodiscover_tasks(packages)
             self.assertTrue(import_modules.connect.called)
             prom = import_modules.connect.call_args[0][0]
@@ -252,7 +258,7 @@ class test_App(AppCase):
             _state._task_stack.pop()
 
     def test_task_not_shared(self):
-        with patch('celery.app.base.shared_task') as sh:
+        with patch('celery.app.base.connect_on_app_finalize') as sh:
             @self.app.task(shared=False)
             def foo():
                 pass
@@ -430,7 +436,7 @@ class test_App(AppCase):
                              {'foo': 'bar'})
 
     def test_compat_setting_CELERY_BACKEND(self):
-
+        self.app._preconf = {}  # removes result backend set by AppCase
         self.app.config_from_object(Object(CELERY_BACKEND='set_by_us'))
         self.assertEqual(self.app.conf.CELERY_RESULT_BACKEND, 'set_by_us')
 

@@ -99,7 +99,8 @@ class test_LoaderBase(AppCase):
         self.assertEqual(self.loader.conf['foo'], 'bar')
 
     def test_import_default_modules(self):
-        modnames = lambda l: [m.__name__ for m in l]
+        def modnames(l):
+            return [m.__name__ for m in l]
         self.app.conf.CELERY_IMPORTS = ('os', 'sys')
         self.assertEqual(
             sorted(modnames(self.loader.import_default_modules())),
@@ -206,9 +207,11 @@ class test_DefaultLoader(AppCase):
         except ValueError:
             pass
         celery = sys.modules.pop('celery', None)
+        sys.modules.pop('celery.five', None)
         try:
             self.assertTrue(l.import_from_cwd('celery'))
             sys.modules.pop('celery', None)
+            sys.modules.pop('celery.five', None)
             sys.path.insert(0, os.getcwd())
             self.assertTrue(l.import_from_cwd('celery'))
         finally:
@@ -261,7 +264,10 @@ class test_autodiscovery(Case):
                 imp.return_value.__path__ = 'foo'
                 base.find_related_module(base, 'tasks')
 
-                imp.side_effect = AttributeError()
+                def se1(val):
+                    imp.side_effect = AttributeError()
+
+                imp.side_effect = se1
                 base.find_related_module(base, 'tasks')
                 imp.side_effect = None
 

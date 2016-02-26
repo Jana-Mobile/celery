@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
 """Distributed Task Queue"""
+# :copyright: (c) 2015 Ask Solem and individual contributors.
+#                 All rights # reserved.
+# :copyright: (c) 2012-2014 GoPivotal, Inc., All rights reserved.
 # :copyright: (c) 2009 - 2012 Ask Solem and individual contributors,
 #                 All rights reserved.
-# :copyright: (c) 2012-2013 GoPivotal, Inc., All rights reserved.
 # :license:   BSD (3 Clause), see LICENSE for more details.
 
 from __future__ import absolute_import
+
+import os
+import sys
 
 from collections import namedtuple
 
@@ -14,7 +19,7 @@ version_info_t = namedtuple(
 )
 
 SERIES = 'Cipater'
-VERSION = version_info_t(3, 1, 10, '', '')
+VERSION = version_info_t(3, 1, 20, '', '')
 __version__ = '{0.major}.{0.minor}.{0.micro}{0.releaselevel}'.format(VERSION)
 __author__ = 'Ask Solem'
 __contact__ = 'ask@celeryproject.org'
@@ -30,8 +35,6 @@ VERSION_BANNER = '{0} ({1})'.format(__version__, SERIES)
 
 # -eof meta-
 
-import os
-import sys
 if os.environ.get('C_IMPDEBUG'):  # pragma: no cover
     from .five import builtins
     real_import = builtins.__import__
@@ -127,9 +130,9 @@ def maybe_patch_concurrency(argv=sys.argv,
         concurrency.get_implementation(pool)
 
 # Lazy loading
-from .five import recreate_module
+from celery import five  # noqa
 
-old_module, new_module = recreate_module(  # pragma: no cover
+old_module, new_module = five.recreate_module(  # pragma: no cover
     __name__,
     by_module={
         'celery.app': ['Celery', 'bugreport', 'shared_task'],
@@ -144,8 +147,9 @@ old_module, new_module = recreate_module(  # pragma: no cover
     __package__='celery', __file__=__file__,
     __path__=__path__, __doc__=__doc__, __version__=__version__,
     __author__=__author__, __contact__=__contact__,
-    __homepage__=__homepage__, __docformat__=__docformat__,
+    __homepage__=__homepage__, __docformat__=__docformat__, five=five,
     VERSION=VERSION, SERIES=SERIES, VERSION_BANNER=VERSION_BANNER,
+    version_info_t=version_info_t,
     maybe_patch_concurrency=maybe_patch_concurrency,
     _find_option_with_arg=_find_option_with_arg,
 )

@@ -55,10 +55,14 @@ must also export them (e.g. ``export DISPLAY=":0"``)
     .. code-block:: bash
 
         $ celery multi start worker1 \
+            -A proj \
             --pidfile="$HOME/run/celery/%n.pid" \
             --logfile="$HOME/log/celery/%n.log"
 
-        $ celery multi restart worker1 --pidfile="$HOME/run/celery/%n.pid"
+        $ celery multi restart worker1 \
+            -A proj \
+            --logfile="$HOME/log/celery/%n%I.log" \
+            --pidfile="$HOME/run/celery/%n.pid
 
         $ celery multi stopwait worker1 --pidfile="$HOME/run/celery/%n.pid"
 
@@ -74,11 +78,13 @@ This is an example configuration for a Python project.
 .. code-block:: bash
 
     # Names of nodes to start
-    #   most will only start one node:
+    #   most people will only start one node:
     CELERYD_NODES="worker1"
     #   but you can also start multiple and configure settings
-    #   for each in CELERYD_OPTS (see `celery multi --help` for examples).
-    CELERYD_NODES="worker1 worker2 worker3"
+    #   for each in CELERYD_OPTS (see `celery multi --help` for examples):
+    #CELERYD_NODES="worker1 worker2 worker3"
+    #   alternatively, you can specify the number of nodes to start:
+    #CELERYD_NODES=10
 
     # Absolute or relative path to the 'celery' command:
     CELERY_BIN="/usr/local/bin/celery"
@@ -211,7 +217,7 @@ This is an example configuration for a Python project:
     CELERYBEAT_CHDIR="/opt/Myproject/"
 
     # Extra arguments to celerybeat
-    CELERYBEAT_OPTS="--schedule=/var/run/celerybeat-schedule"
+    CELERYBEAT_OPTS="--schedule=/var/run/celery/celerybeat-schedule"
 
 .. _generic-initd-celerybeat-django-example:
 
@@ -265,7 +271,7 @@ Available options
 * CELERY_CREATE_LOGDIR
     Always create logfile directory.  By default only enable when no custom
     logfile location set.
-    
+
 .. _daemon-systemd-generic:
 
 Usage systemd
@@ -279,10 +285,10 @@ Service file: celery.service
 :Usage: `systemctl {start|stop|restart|status} celery.service`
 :Configuration file: /etc/conf.d/celery
 
-To create a temporary folders for the log and pid files change user and group in 
+To create a temporary folders for the log and pid files change user and group in
 /usr/lib/tmpfiles.d/celery.conf.
-To configure user, group, chdir change settings User, Group and WorkingDirectory defines 
-in /usr/lib/systemd/system/celery.service. 
+To configure user, group, chdir change settings User, Group and WorkingDirectory defines
+in /usr/lib/systemd/system/celery.service.
 
 .. _generic-systemd-celery-example:
 

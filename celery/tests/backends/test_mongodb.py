@@ -7,7 +7,7 @@ from pickle import loads, dumps
 
 from celery import states
 from celery.backends import mongodb as module
-from celery.backends.mongodb import MongoBackend, Bunch, pymongo
+from celery.backends.mongodb import MongoBackend, pymongo
 from celery.exceptions import ImproperlyConfigured
 from celery.tests.case import (
     AppCase, MagicMock, Mock, SkipTest, ANY,
@@ -43,11 +43,6 @@ class test_MongoBackend(AppCase):
         MongoBackend.decode = self._reset['decode']
         module.Binary = self._reset['Binary']
         datetime.datetime = self._reset['datetime']
-
-    def test_Bunch(self):
-        x = Bunch(foo='foo', bar=2)
-        self.assertEqual(x.foo, 'foo')
-        self.assertEqual(x.bar, 2)
 
     def test_init_no_mongodb(self):
         prev, module.pymongo = module.pymongo, None
@@ -98,8 +93,9 @@ class test_MongoBackend(AppCase):
 
             connection = self.backend._get_connection()
             mock_Connection.assert_called_once_with(
-                host='mongodb://localhost:27017', ssl=False, max_pool_size=10,
-                auto_start_request=False)
+                host='mongodb://localhost:27017',
+                **self.backend._prepare_client_options()
+            )
             self.assertEqual(sentinel.connection, connection)
 
     def test_get_connection_no_connection_mongodb_uri(self):
@@ -113,8 +109,8 @@ class test_MongoBackend(AppCase):
 
             connection = self.backend._get_connection()
             mock_Connection.assert_called_once_with(
-                host=mongodb_uri, ssl=False, max_pool_size=10,
-                auto_start_request=False)
+                host=mongodb_uri, **self.backend._prepare_client_options()
+            )
             self.assertEqual(sentinel.connection, connection)
 
     @patch('celery.backends.mongodb.MongoBackend._get_connection')
@@ -196,9 +192,10 @@ class test_MongoBackend(AppCase):
         mock_get_database.assert_called_once_with()
         mock_database.__getitem__.assert_called_once_with(MONGODB_COLLECTION)
         self.assertEqual(
-            ['status', 'task_id', 'date_done', 'traceback', 'result',
-             'children'],
-            list(ret_val.keys()))
+            list(sorted(['status', 'task_id', 'date_done', 'traceback',
+                         'result', 'children'])),
+            list(sorted(ret_val.keys())),
+        )
 
     @patch('celery.backends.mongodb.MongoBackend._get_database')
     def test_get_task_meta_for_no_result(self, mock_get_database):
@@ -252,7 +249,7 @@ class test_MongoBackend(AppCase):
         mock_database.__getitem__.assert_called_once_with(MONGODB_COLLECTION)
         mock_collection.find_one.assert_called_once_with(
             {'_id': sentinel.taskset_id})
-        self.assertEqual(
+        self.assertItemsEqual(
             ['date_done', 'result', 'task_id'],
             list(ret_val.keys()),
         )
@@ -298,7 +295,7 @@ class test_MongoBackend(AppCase):
         self.backend.taskmeta_collection = MONGODB_COLLECTION
 
         mock_database = MagicMock(spec=['__getitem__', '__setitem__'])
-        mock_collection = Mock()
+        self.backend.collections = mock_collection = Mock()
 
         mock_get_database.return_value = mock_database
         mock_database.__getitem__.return_value = mock_collection
@@ -309,7 +306,7 @@ class test_MongoBackend(AppCase):
         mock_get_database.assert_called_once_with()
         mock_database.__getitem__.assert_called_once_with(
             MONGODB_COLLECTION)
-        mock_collection.assert_called_once_with()
+        self.assertTrue(mock_collection.remove.called)
 
     def test_get_database_authfailure(self):
         x = MongoBackend(app=self.app)
@@ -322,3 +319,42 @@ class test_MongoBackend(AppCase):
         with self.assertRaises(ImproperlyConfigured):
             x._get_database()
         db.authenticate.assert_called_with('jerry', 'cere4l')
+
+    @patch('celery.backends.mongodb.detect_environment')
+    def test_prepare_client_options_for_ver_2(self, m_detect_env):
+        m_detect_env.return_value = 'default'
+        with patch('pymongo.version_tuple', new=(2, 6, 3)):
+            options = self.backend._prepare_client_options()
+            self.assertDictEqual(options, {
+                'max_pool_size': self.backend.max_pool_size,
+                'auto_start_request': False
+            })
+
+    @patch('celery.backends.mongodb.detect_environment')
+    def test_prepare_client_options_for_ver_2_with_gevent(self, m_detect_env):
+        m_detect_env.return_value = 'gevent'
+        with patch('pymongo.version_tuple', new=(2, 6, 3)):
+            options = self.backend._prepare_client_options()
+            self.assertDictEqual(options, {
+                'max_pool_size': self.backend.max_pool_size,
+                'auto_start_request': False,
+                'use_greenlets': True
+            })
+
+    @patch('celery.backends.mongodb.detect_environment')
+    def test_prepare_client_options_for_ver_3(self, m_detect_env):
+        m_detect_env.return_value = 'default'
+        with patch('pymongo.version_tuple', new=(3, 0, 3)):
+            options = self.backend._prepare_client_options()
+            self.assertDictEqual(options, {
+                'maxPoolSize': self.backend.max_pool_size
+            })
+
+    @patch('celery.backends.mongodb.detect_environment')
+    def test_prepare_client_options_for_ver_3_with_gevent(self, m_detect_env):
+        m_detect_env.return_value = 'gevent'
+        with patch('pymongo.version_tuple', new=(3, 0, 3)):
+            options = self.backend._prepare_client_options()
+            self.assertDictEqual(options, {
+                'maxPoolSize': self.backend.max_pool_size
+            })

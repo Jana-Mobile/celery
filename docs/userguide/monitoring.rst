@@ -58,32 +58,33 @@ Commands
 
     .. code-block:: bash
 
-            $ celery status
+            $ celery -A proj status
 
 * **result**: Show the result of a task
 
     .. code-block:: bash
 
-        $ celery result -t tasks.add 4e196aa4-0141-4601-8138-7aa33db0f577
+        $ celery -A proj result -t tasks.add 4e196aa4-0141-4601-8138-7aa33db0f577
 
     Note that you can omit the name of the task as long as the
     task doesn't use a custom result backend.
 
 * **purge**: Purge messages from all configured task queues.
 
-    .. code-block:: bash
-
-        $ celery purge
-
     .. warning::
         There is no undo for this operation, and messages will
         be permanently deleted!
+
+    .. code-block:: bash
+
+        $ celery -A proj purge
+
 
 * **inspect active**: List active tasks
 
     .. code-block:: bash
 
-        $ celery inspect active
+        $ celery -A proj inspect active
 
     These are all the tasks that are currently being executed.
 
@@ -91,7 +92,7 @@ Commands
 
     .. code-block:: bash
 
-        $ celery inspect scheduled
+        $ celery -A proj inspect scheduled
 
     These are tasks reserved by the worker because they have the
     `eta` or `countdown` argument set.
@@ -100,7 +101,7 @@ Commands
 
     .. code-block:: bash
 
-        $ celery inspect reserved
+        $ celery -A proj inspect reserved
 
     This will list all tasks that have been prefetched by the worker,
     and is currently waiting to be executed (does not include tasks
@@ -110,37 +111,37 @@ Commands
 
     .. code-block:: bash
 
-        $ celery inspect revoked
+        $ celery -A proj inspect revoked
 
 * **inspect registered**: List registered tasks
 
     .. code-block:: bash
 
-        $ celery inspect registered
+        $ celery -A proj inspect registered
 
 * **inspect stats**: Show worker statistics (see :ref:`worker-statistics`)
 
     .. code-block:: bash
 
-        $ celery inspect stats
+        $ celery -A proj inspect stats
 
 * **control enable_events**: Enable events
 
     .. code-block:: bash
 
-        $ celery control enable_events
+        $ celery -A proj control enable_events
 
 * **control disable_events**: Disable events
 
     .. code-block:: bash
 
-        $ celery control disable_events
+        $ celery -A proj control disable_events
 
 * **migrate**: Migrate tasks from one broker to another (**EXPERIMENTAL**).
 
     .. code-block:: bash
 
-        $ celery migrate redis://localhost amqp://localhost
+        $ celery -A proj migrate redis://localhost amqp://localhost
 
   This command will migrate all the tasks on one broker to another.
   As this command is new and experimental you should be sure to have
@@ -164,9 +165,9 @@ You can specify a single, or a list of workers by using the
 
 .. code-block:: bash
 
-    $ celery inspect -d w1,w2 reserved
+    $ celery -A proj inspect -d w1,w2 reserved
 
-    $ celery control -d w1,w2 enable_events
+    $ celery -A proj control -d w1,w2 enable_events
 
 
 .. _monitoring-flower:
@@ -187,16 +188,16 @@ Features
 
 - Real-time monitoring using Celery Events
 
-    - Task progress and history.
+    - Task progress and history
     - Ability to show task details (arguments, start time, runtime, and more)
     - Graphs and statistics
 
 - Remote Control
 
-    - View worker status and statistics.
-    - Shutdown and restart worker instances.
-    - Control worker pool size and autoscale settings.
-    - View and modify the queues a worker instance consumes from.
+    - View worker status and statistics
+    - Shutdown and restart worker instances
+    - Control worker pool size and autoscale settings
+    - View and modify the queues a worker instance consumes from
     - View currently running tasks
     - View scheduled tasks (ETA/countdown)
     - View reserved and revoked tasks
@@ -232,13 +233,13 @@ Running the flower command will start a web-server that you can visit:
 
 .. code-block:: bash
 
-    $ celery flower
+    $ celery -A proj flower
 
 The default port is http://localhost:5555, but you can change this using the `--port` argument:
 
 .. code-block:: bash
 
-    $ celery flower --port=5555
+    $ celery -A proj flower --port=5555
 
 Broker URL can also be passed through the `--broker` argument :
 
@@ -254,6 +255,11 @@ Then, you can visit flower in your web browser :
 
     $ open http://localhost:5555
 
+Flower has many more features than are detailed here, including
+authorization options. Check out the `official documentation`_ for more
+information.
+
+.. _official documentation: http://flower.readthedocs.org/en/latest/
 
 
 .. _monitoring-celeryev:
@@ -273,7 +279,7 @@ Starting:
 
 .. code-block:: bash
 
-    $ celery events
+    $ celery -A proj events
 
 You should see a screen like:
 
@@ -285,13 +291,13 @@ You should see a screen like:
 
 .. code-block:: bash
 
-    $ celery events --camera=<camera-class> --frequency=1.0
+    $ celery -A proj events --camera=<camera-class> --frequency=1.0
 
 and it includes a tool to dump events to :file:`stdout`:
 
 .. code-block:: bash
 
-    $ celery events --dump
+    $ celery -A proj events --dump
 
 For a complete list of options use ``--help``:
 
@@ -457,7 +463,7 @@ arguments:
 
 .. code-block:: bash
 
-    $ celery events -c myapp.Camera --frequency=2.0
+    $ celery -A proj events -c myapp.Camera --frequency=2.0
 
 
 .. _monitoring-camera:
@@ -486,7 +492,7 @@ Here is an example camera, dumping the snapshot to screen:
                 return
             print('Workers: {0}'.format(pformat(state.workers, indent=4)))
             print('Tasks: {0}'.format(pformat(state.tasks, indent=4)))
-            print('Total: {0.event_count} events, %s {0.task_count}'.format(
+            print('Total: {0.event_count} events, {0.task_count} tasks'.format(
                 state))
 
 See the API reference for :mod:`celery.events.state` to read more
@@ -497,7 +503,7 @@ it with the :option:`-c` option:
 
 .. code-block:: bash
 
-    $ celery events -c myapp.DumpCam --frequency=2.0
+    $ celery -A proj events -c myapp.DumpCam --frequency=2.0
 
 Or you can use it programmatically like this:
 

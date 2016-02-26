@@ -38,6 +38,7 @@ from celery.exceptions import InvalidTaskError
 from celery.five import items, values
 from celery.utils.functional import noop
 from celery.utils.log import get_logger
+from celery.utils.objects import Bunch
 from celery.utils.text import truncate
 from celery.utils.timeutils import humanize_seconds, rate
 
@@ -270,7 +271,7 @@ class Consumer(object):
             self.on_task_request(request)
 
     def start(self):
-        blueprint, loop = self.blueprint, self.loop
+        blueprint = self.blueprint
         while blueprint.state != CLOSE:
             self.restart_count += 1
             maybe_shutdown()
@@ -534,12 +535,16 @@ class Events(bootsteps.StartStopStep):
 class Heart(bootsteps.StartStopStep):
     requires = (Events, )
 
-    def __init__(self, c, without_heartbeat=False, **kwargs):
+    def __init__(self, c, without_heartbeat=False, heartbeat_interval=None,
+                 **kwargs):
         self.enabled = not without_heartbeat
+        self.heartbeat_interval = heartbeat_interval
         c.heart = None
 
     def start(self, c):
-        c.heart = heartbeat.Heart(c.timer, c.event_dispatcher)
+        c.heart = heartbeat.Heart(
+            c.timer, c.event_dispatcher, self.heartbeat_interval,
+        )
         c.heart.start()
 
     def stop(self, c):
@@ -589,11 +594,27 @@ class Tasks(bootsteps.StartStopStep):
 
     def start(self, c):
         c.update_strategies()
+
+        # - RabbitMQ 3.3 completely redefines how basic_qos works..
+        # This will detect if the new qos smenatics is in effect,
+        # and if so make sure the 'apply_global' flag is set on qos updates.
+        qos_global = not c.connection.qos_semantics_matches_spec
+
+        # set initial prefetch count
+        c.connection.default_channel.basic_qos(
+            0, c.initial_prefetch_count, qos_global,
+        )
+
         c.task_consumer = c.app.amqp.TaskConsumer(
             c.connection, on_decode_error=c.on_decode_error,
         )
-        c.qos = QoS(c.task_consumer.qos, c.initial_prefetch_count)
-        c.qos.update()  # set initial prefetch count
+
+        def set_prefetch_count(prefetch_count):
+            return c.task_consumer.qos(
+                prefetch_count=prefetch_count,
+                apply_global=qos_global,
+            )
+        c.qos = QoS(set_prefetch_count, c.initial_prefetch_count)
 
     def stop(self, c):
         if c.task_consumer:
@@ -652,6 +673,11 @@ class Gossip(bootsteps.ConsumerStep):
         self.Receiver = c.app.events.Receiver
         self.hostname = c.hostname
         self.full_hostname = '.'.join([self.hostname, str(c.pid)])
+        self.on = Bunch(
+            node_join=set(),
+            node_leave=set(),
+            node_lost=set(),
+        )
 
         self.timer = c.timer
         if self.enabled:
@@ -738,12 +764,23 @@ class Gossip(bootsteps.ConsumerStep):
 
     def on_node_join(self, worker):
         debug('%s joined the party', worker.hostname)
+        self._call_handlers(self.on.node_join, worker)
 
     def on_node_leave(self, worker):
         debug('%s left', worker.hostname)
+        self._call_handlers(self.on.node_leave, worker)
 
     def on_node_lost(self, worker):
         info('missed heartbeat from %s', worker.hostname)
+        self._call_handlers(self.on.node_lost, worker)
+
+    def _call_handlers(self, handlers, *args, **kwargs):
+        for handler in handlers:
+            try:
+                handler(*args, **kwargs)
+            except Exception as exc:
+                error('Ignored error from handler %r: %r',
+                      handler, exc, exc_info=1)
 
     def register_timer(self):
         if self._tref is not None:
@@ -787,7 +824,7 @@ class Gossip(bootsteps.ConsumerStep):
                     message.payload['hostname'])
         if hostname != self.hostname:
             type, event = prepare(message.payload)
-            obj, subject = self.update_state(event)
+            self.update_state(event)
         else:
             self.clock.forward()
 

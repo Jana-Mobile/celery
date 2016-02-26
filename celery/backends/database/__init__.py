@@ -37,8 +37,8 @@ def _sqlalchemy_installed():
     return sqlalchemy
 _sqlalchemy_installed()
 
-from sqlalchemy.exc import DatabaseError, InvalidRequestError
-from sqlalchemy.orm.exc import StaleDataError
+from sqlalchemy.exc import DatabaseError, InvalidRequestError  # noqa
+from sqlalchemy.orm.exc import StaleDataError  # noqa
 
 
 @contextmanager
@@ -140,7 +140,7 @@ class DatabaseBackend(BaseBackend):
                 task = Task(task_id)
                 task.status = states.PENDING
                 task.result = None
-            return task.to_dict()
+            return self.meta_from_decoded(task.to_dict())
 
     @retry
     def _save_group(self, group_id, result):

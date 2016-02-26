@@ -4,7 +4,7 @@
 
 .. image:: http://cloud.github.com/downloads/celery/celery/celery_128.png
 
-:Version: 3.1.10 (Cipater)
+:Version: 3.1.20 (Cipater)
 :Web: http://celeryproject.org/
 :Download: http://pypi.python.org/pypi/celery/
 :Source: http://github.com/celery/celery/
@@ -183,7 +183,7 @@ development easier, and sometimes they add important hooks like closing
 database connections at ``fork``.
 
 .. _`Django`: http://djangoproject.com/
-.. _`Pylons`: http://pylonshq.com/
+.. _`Pylons`: http://pylonsproject.org/
 .. _`Flask`: http://flask.pocoo.org/
 .. _`web2py`: http://web2py.com/
 .. _`Bottle`: http://bottlepy.org/
@@ -234,9 +234,9 @@ by using brackets.  Multiple bundles can be specified by separating them by
 commas.
 ::
 
-    $ pip install celery[librabbitmq]
+    $ pip install "celery[librabbitmq]"
 
-    $ pip install celery[librabbitmq,redis,auth,msgpack]
+    $ pip install "celery[librabbitmq,redis,auth,msgpack]"
 
 The following bundles are available:
 

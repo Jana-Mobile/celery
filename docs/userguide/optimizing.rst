@@ -54,8 +54,8 @@ General Settings
 
 .. _optimizing-librabbitmq:
 
-librabbitmq
------------
+librabbitmq (Python 2 only)
+---------------------------
 
 If you're using RabbitMQ (AMQP) as the broker then you can install the
 :mod:`librabbitmq` module to use an optimized client written in C:
@@ -208,8 +208,8 @@ waiting for long running tasks to complete::
     <- T2 complete
 
     -> send T3 to Process A
-    # A still executing T1, T3 stuck in local buffer and
-    # will not start until T1 returns
+    # A still executing T1, T3 stuck in local buffer and will not start until
+    # T1 returns, and other queued tasks will not be sent to idle processes
 
 The worker will send tasks to the process as long as the pipe buffer is
 writable.  The pipe buffer size varies based on the operating system: some may
@@ -223,5 +223,5 @@ worker option:
 
     $ celery -A proj worker -l info -Ofair
 
-With this option enabled the worker will only write to workers that are
+With this option enabled the worker will only write to processes that are
 available for work, disabling the prefetch behavior.

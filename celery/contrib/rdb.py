@@ -46,7 +46,6 @@ from pdb import Pdb
 from billiard import current_process
 
 from celery.five import range
-from celery.platforms import ignore_errno
 
 __all__ = ['CELERY_RDB_HOST', 'CELERY_RDB_PORT', 'default_port',
            'Rdb', 'debugger', 'set_trace']
@@ -133,13 +132,23 @@ class Rdb(Pdb):
     def say(self, m):
         print(m, file=self.out)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._close_session()
+
     def _close_session(self):
         self.stdin, self.stdout = sys.stdin, sys.stdout = self._prev_handles
-        self._handle.close()
-        self._client.close()
-        self._sock.close()
-        self.active = False
-        self.say(SESSION_ENDED.format(self=self))
+        if self.active:
+            if self._handle is not None:
+                self._handle.close()
+            if self._client is not None:
+                self._client.close()
+            if self._sock is not None:
+                self._sock.close()
+            self.active = False
+            self.say(SESSION_ENDED.format(self=self))
 
     def do_continue(self, arg):
         self._close_session()
@@ -152,12 +161,6 @@ class Rdb(Pdb):
         self.set_quit()
         return 1
     do_q = do_exit = do_quit
-
-    def set_trace(self, frame=None):
-        if frame is None:
-            frame = _frame().f_back
-        with ignore_errno(errno.ECONNRESET):
-            Pdb.set_trace(self, frame)
 
     def set_quit(self):
         # this raises a BdbQuit exception that we are unable to catch.

@@ -11,45 +11,22 @@ from __future__ import absolute_import
 
 from collections import deque
 
-from celery._state import get_current_worker_task
+from celery._state import get_current_worker_task, connect_on_app_finalize
 from celery.utils import uuid
 from celery.utils.log import get_logger
 
-__all__ = ['shared_task', 'load_shared_tasks']
+__all__ = []
 
 logger = get_logger(__name__)
 
-#: global list of functions defining tasks that should be
-#: added to all apps.
-_shared_tasks = set()
 
-
-def shared_task(constructor):
-    """Decorator that specifies a function that generates a built-in task.
-
-    The function will then be called for every new app instance created
-    (lazily, so more exactly when the task registry for that app is needed).
-
-    The function must take a single ``app`` argument.
-    """
-    _shared_tasks.add(constructor)
-    return constructor
-
-
-def load_shared_tasks(app):
-    """Create built-in tasks for an app instance."""
-    constructors = set(_shared_tasks)
-    for constructor in constructors:
-        constructor(app)
-
-
-@shared_task
+@connect_on_app_finalize
 def add_backend_cleanup_task(app):
     """The backend cleanup task can be used to clean up the default result
     backend.
 
     If the configured backend requires periodic cleanup this task is also
-    automatically configured to run every day at midnight (requires
+    automatically configured to run every day at 4am (requires
     :program:`celery beat` to be running).
 
     """
@@ -60,7 +37,7 @@ def add_backend_cleanup_task(app):
     return backend_cleanup
 
 
-@shared_task
+@connect_on_app_finalize
 def add_unlock_chord_task(app):
     """This task is used by result backends without native chord support.
 
@@ -74,8 +51,9 @@ def add_unlock_chord_task(app):
     default_propagate = app.conf.CELERY_CHORD_PROPAGATES
 
     @app.task(name='celery.chord_unlock', max_retries=None, shared=False,
-              default_retry_delay=1, ignore_result=True, _force_evaluate=True)
-    def unlock_chord(group_id, callback, interval=None, propagate=None,
+              default_retry_delay=1, ignore_result=True, _force_evaluate=True,
+              bind=True)
+    def unlock_chord(self, group_id, callback, interval=None, propagate=None,
                      max_retries=None, result=None,
                      Result=app.AsyncResult, GroupResult=app.GroupResult,
                      result_from_tuple=result_from_tuple):
@@ -86,48 +64,54 @@ def add_unlock_chord_task(app):
         # exception set to ChordError.
         propagate = default_propagate if propagate is None else propagate
         if interval is None:
-            interval = unlock_chord.default_retry_delay
+            interval = self.default_retry_delay
 
         # check if the task group is ready, and if so apply the callback.
         deps = GroupResult(
             group_id,
             [result_from_tuple(r, app=app) for r in result],
+            app=app,
         )
         j = deps.join_native if deps.supports_native_join else deps.join
 
-        if deps.ready():
-            callback = signature(callback, app=app)
-            try:
-                with allow_join_result():
-                    ret = j(timeout=3.0, propagate=propagate)
-            except Exception as exc:
-                try:
-                    culprit = next(deps._failed_join_report())
-                    reason = 'Dependency {0.id} raised {1!r}'.format(
-                        culprit, exc,
-                    )
-                except StopIteration:
-                    reason = repr(exc)
-                logger.error('Chord %r raised: %r', group_id, exc, exc_info=1)
-                app.backend.chord_error_from_stack(callback,
-                                                   ChordError(reason))
-            else:
-                try:
-                    callback.delay(ret)
-                except Exception as exc:
-                    logger.error('Chord %r raised: %r', group_id, exc,
-                                 exc_info=1)
-                    app.backend.chord_error_from_stack(
-                        callback,
-                        exc=ChordError('Callback error: {0!r}'.format(exc)),
-                    )
+        try:
+            ready = deps.ready()
+        except Exception as exc:
+            raise self.retry(
+                exc=exc, countdown=interval, max_retries=max_retries,
+            )
         else:
-            raise unlock_chord.retry(countdown=interval,
-                                     max_retries=max_retries)
+            if not ready:
+                raise self.retry(countdown=interval, max_retries=max_retries)
+
+        callback = signature(callback, app=app)
+        try:
+            with allow_join_result():
+                ret = j(timeout=3.0, propagate=propagate)
+        except Exception as exc:
+            try:
+                culprit = next(deps._failed_join_report())
+                reason = 'Dependency {0.id} raised {1!r}'.format(
+                    culprit, exc,
+                )
+            except StopIteration:
+                reason = repr(exc)
+            logger.error('Chord %r raised: %r', group_id, exc, exc_info=1)
+            app.backend.chord_error_from_stack(callback,
+                                               ChordError(reason))
+        else:
+            try:
+                callback.delay(ret)
+            except Exception as exc:
+                logger.error('Chord %r raised: %r', group_id, exc, exc_info=1)
+                app.backend.chord_error_from_stack(
+                    callback,
+                    exc=ChordError('Callback error: {0!r}'.format(exc)),
+                )
     return unlock_chord
 
 
-@shared_task
+@connect_on_app_finalize
 def add_map_task(app):
     from celery.canvas import signature
 
@@ -138,7 +122,7 @@ def add_map_task(app):
     return xmap
 
 
-@shared_task
+@connect_on_app_finalize
 def add_starmap_task(app):
     from celery.canvas import signature
 
@@ -149,7 +133,7 @@ def add_starmap_task(app):
     return xstarmap
 
 
-@shared_task
+@connect_on_app_finalize
 def add_chunk_task(app):
     from celery.canvas import chunks as _chunks
 
@@ -159,7 +143,7 @@ def add_chunk_task(app):
     return chunks
 
 
-@shared_task
+@connect_on_app_finalize
 def add_group_task(app):
     _app = app
     from celery.canvas import maybe_signature, signature
@@ -171,7 +155,8 @@ def add_group_task(app):
         accept_magic_kwargs = False
         _decorated = True
 
-        def run(self, tasks, result, group_id, partial_args):
+        def run(self, tasks, result, group_id, partial_args,
+                add_to_parent=True):
             app = self.app
             result = result_from_tuple(result, app)
             # any partial args are added to all tasks in the group
@@ -186,7 +171,7 @@ def add_group_task(app):
                 [stask.apply_async(group_id=group_id, producer=pub,
                                    add_to_parent=False) for stask in taskit]
             parent = get_current_worker_task()
-            if parent:
+            if add_to_parent and parent:
                 parent.add_trail(result)
             return result
 
@@ -225,7 +210,7 @@ def add_group_task(app):
     return Group
 
 
-@shared_task
+@connect_on_app_finalize
 def add_chain_task(app):
     from celery.canvas import (
         Signature, chain, chord, group, maybe_signature, maybe_unroll_group,
@@ -321,7 +306,7 @@ def add_chain_task(app):
     return Chain
 
 
-@shared_task
+@connect_on_app_finalize
 def add_chord_task(app):
     """Every chord is executed in a dedicated task, so that the chord
     can be used as a signature, and this generates the task
@@ -354,7 +339,7 @@ def add_chord_task(app):
             if eager:
                 return header.apply(args=partial_args, task_id=group_id)
 
-            body.setdefault('chord_size', len(header.tasks))
+            body['chord_size'] = len(header.tasks)
             results = header.freeze(group_id=group_id, chord=body).results
 
             return self.backend.apply_chord(
